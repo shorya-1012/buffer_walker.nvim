@@ -12,7 +12,7 @@ A simple Neovim plugin that lets you walk back and forward through previously vi
 
 ### [lazy.nvim](https://github.com/folke/lazy.nvim)
 ```lua
-{
+return {
   "shorya-1012/buffer_walker.nvim",
   config = function()
       vim.keymap.set("n", "<leader>,", ":MoveBack<CR>", { silent = true })
