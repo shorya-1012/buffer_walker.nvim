@@ -4,16 +4,16 @@ local prev_buffers = Stack.new()
 local next_buffers = Stack.new()
 
 --[[
-  I add buffers to the stack after leaving it.
+  I push buffers to the stack after leaving them.
   So I need to check whether the buffer switch was triggered by this plugin or by an external
   command (e.g. `:e buffer`).
-If the switch was caused by this plugin, adding the buffer
+
+  If the switch was caused by this plugin, adding the buffer
   to the stack will cause a loop.
 ]] --
 local navigating = false
 
-
--- add buffer to backward stack when leaving buffer
+-- add buffer to prev_buffers stack when leaving buffer
 vim.api.nvim_create_autocmd({ "BufLeave" }, {
   callback = function(args)
     if navigating then
@@ -37,10 +37,7 @@ local get_previous_buff = function()
     prev_buffers:pop()
   end
 
-  if not prev_buffers:is_empty() then
-    return prev_buffers:pop()
-  end
-  return -1
+  return prev_buffers:pop()
 end
 
 local get_next_buffer = function()
@@ -49,17 +46,13 @@ local get_next_buffer = function()
     next_buffers:pop()
   end
 
-  if not next_buffers:is_empty() then
-    return next_buffers:pop()
-  end
-
-  return -1
+  return next_buffers:pop()
 end
 
 local move_backward = function()
   local prev_buff = get_previous_buff()
   if prev_buff == -1 then
-    print("No vaild previous buffer to move to")
+    print("No buffers to move back to!")
   else
     local curr_buffer = vim.api.nvim_get_current_buf()
     next_buffers:push(curr_buffer) --
@@ -72,7 +65,7 @@ end
 local move_forward = function()
   local next_buff = get_next_buffer()
   if next_buff == -1 then
-    print("No vaild next buffer to move to")
+    print("No buffers to move forward to!")
   else
     vim.cmd("buffer " .. next_buff)
   end
