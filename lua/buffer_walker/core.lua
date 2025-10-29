@@ -12,6 +12,7 @@ local next_buffers = Stack.new()
   to the stack will cause a loop.
 ]] --
 local navigating = false
+local coming_from = nil
 
 -- add buffer to prev_buffers stack when leaving buffer
 vim.api.nvim_create_autocmd({ "BufLeave" }, {
@@ -22,6 +23,19 @@ vim.api.nvim_create_autocmd({ "BufLeave" }, {
     local buf = args.buf
     if vim.api.nvim_buf_is_valid(buf) and (prev_buffers:is_empty() or prev_buffers:top() ~= buf) then
       prev_buffers:push(buf)
+      --[[
+          This is soley to avoid the case as follows
+          open buffer A
+          go to buffer B
+          move back from B to A
+          from A open C
+
+          Without this the above chain of events would cause B to be the next buffer of C
+          which would be semantically incorrect
+      ]] --
+      if coming_from == next_buffers:top() then
+        next_buffers:clear()
+      end
     end
   end
 })
@@ -57,6 +71,7 @@ local move_backward = function()
     local curr_buffer = vim.api.nvim_get_current_buf()
     next_buffers:push(curr_buffer) --
     navigating = true;
+    coming_from = curr_buffer
     vim.cmd("buffer " .. prev_buff)
     navigating = false;
   end

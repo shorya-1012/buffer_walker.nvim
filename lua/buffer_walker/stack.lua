@@ -41,4 +41,10 @@ function Stack:is_empty()
   return false
 end
 
+function Stack:clear()
+  while not self:is_empty() do
+    self:pop()
+  end
+end
+
 return Stack
