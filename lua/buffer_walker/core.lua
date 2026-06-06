@@ -1,18 +1,41 @@
 local Stack = require "buffer_walker.stack"
 
+local buffer_versions = {}
 local prev_buffers = Stack.new()
 local next_buffers = Stack.new()
 
---[[
-  I push buffers to the stack after leaving them.
-  So I need to check whether the buffer switch was triggered by this plugin or by an external
-  command (e.g. `:e buffer`).
-
-  If the switch was caused by this plugin, adding the buffer
-  to the stack will cause a loop.
-]] --
+-- Check whether the swich was caused by the plugin or external command to prevent loops.
 local navigating = false
 local coming_from = nil
+
+local function push_with_version(stack, buff)
+  local v = (buffer_versions[buff] or 0) + 1;
+  buffer_versions[buff] = v
+  stack:push({ buff = buff, version = v })
+end
+
+local function pop_valid(stack)
+  while not stack:is_empty() do
+    local entry = stack:top()
+    if vim.api.nvim_buf_is_valid(entry.buff) and buffer_versions[entry.buff] == entry.version then
+      stack:pop()
+      return entry.buff
+    end
+    stack:pop()
+  end
+  return -1
+end
+
+local function top_buff(stack)
+  while not stack:is_empty() do
+    local entry = stack:top()
+    if vim.api.nvim_buf_is_valid(entry.buff) and buffer_versions[entry.buff] == entry.version then
+      return entry.buff
+    end
+    stack:pop()
+  end
+  return -1
+end
 
 -- add buffer to prev_buffers stack when leaving buffer
 vim.api.nvim_create_autocmd({ "BufLeave" }, {
@@ -21,19 +44,12 @@ vim.api.nvim_create_autocmd({ "BufLeave" }, {
       return -- do not add to stack if buffer was left using the plugin
     end
     local buf = args.buf
-    if vim.api.nvim_buf_is_valid(buf) and (prev_buffers:is_empty() or prev_buffers:top() ~= buf) then
-      prev_buffers:push(buf)
-      --[[
-          This is soley to avoid the case as follows
-          open buffer A
-          go to buffer B
-          move back from B to A
-          from A open C
-
-          Without this the above chain of events would cause B to be the next buffer of C
-          which would be semantically incorrect
-      ]] --
-      if coming_from == next_buffers:top() then
+    local prev_top = top_buff(prev_buffers)
+    if vim.api.nvim_buf_is_valid(buf) and (buf ~= prev_top) then
+      push_with_version(prev_buffers, buf)
+      -- If we opened a new buffer after going back to previous buffer,
+      -- the forward stack becomes meaningless, so clear it
+      if coming_from == top_buff(next_buffers) then
         next_buffers:clear()
       end
     end
@@ -46,21 +62,15 @@ local get_previous_buff = function()
   local curr_buffer = vim.api.nvim_get_current_buf()
 
   -- remove invalid buffers from stack
-  while not prev_buffers:is_empty()
-    and (not vim.api.nvim_buf_is_valid(prev_buffers:top()) or curr_buffer == prev_buffers:top()) do
+  while curr_buffer == top_buff(prev_buffers) do
     prev_buffers:pop()
   end
 
-  return prev_buffers:pop()
+  return pop_valid(prev_buffers)
 end
 
 local get_next_buffer = function()
-  -- remove invaild buffers
-  while not next_buffers:is_empty() and not vim.api.nvim_buf_is_valid(next_buffers:top()) do
-    next_buffers:pop()
-  end
-
-  return next_buffers:pop()
+  return pop_valid(next_buffers)
 end
 
 local move_backward = function()
@@ -69,7 +79,7 @@ local move_backward = function()
     print("No buffers to move back to!")
   else
     local curr_buffer = vim.api.nvim_get_current_buf()
-    next_buffers:push(curr_buffer) --
+    push_with_version(next_buffers, curr_buffer)
     navigating = true;
     coming_from = curr_buffer
     vim.cmd("buffer " .. prev_buff)
